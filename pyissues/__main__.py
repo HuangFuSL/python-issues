@@ -15,6 +15,7 @@ from . import base as base
 from . import const as const
 from . import io as issuesIO
 from . import network as network
+from . import version as _version
 
 
 sub_commands: Dict[str, Callable] = {}
@@ -193,6 +194,9 @@ def load(*, datafile: str = "issues.xml.gz", **kwargs):
     print("Loaded issues are saved in `ret`")
     return issues
 
+@sub_command
+def version(**kwargs):
+    print(_version.__version__)
 
 def main(*args) -> Any:
     try:
