@@ -43,3 +43,14 @@ _SPLIT_NEEDED = {
     'files': ('uploaded', 'date'),
     'pull_requests': ('linked', 'date')
 }
+
+_TIME_UNITS = {
+    'year': "%Y",
+    'month': "%Y-%m",
+    'day': "%Y-%m-%d",
+    'hour': "%Y-%m-%d %H:00:00",
+    'minute': "%Y-%m-%d %H:%M:00",
+    'second': "%Y-%m-%d %H:%M:%S"
+}
+
+_TIME_FIELDS = ['created', 'last_changed']

@@ -90,6 +90,7 @@ def refresh_meta(
 
 def fetch(records: Iterable[int], threads: int | None = 16) -> List[base.Issue]:
     print("Fetching %d issues from bugs.python.org" % (len(records), ))
+    if threads is not None: threads = int(threads)
     with multiprocessing.Pool(threads) as pool:
         start = time.time()
         ret = pool.map(network.get_data, map(int, records))
@@ -180,8 +181,8 @@ def update(*,
         new_issues = fetch(update, threads)
         for _ in new_issues:
             issues[int(_._id)] = _
-        update_meta(new_list)
         write(issues)
+        update_meta(new_list)
     else:
         print("No change detected.")
         return None
@@ -229,5 +230,8 @@ def main(*args) -> Any:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2:
-        ret = main(*(sys.argv[1:]))
+    try:
+        if len(sys.argv) >= 2:
+            ret = main(*(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(0)

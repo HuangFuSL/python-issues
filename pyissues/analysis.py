@@ -5,20 +5,11 @@ from typing import Dict, List
 
 from pyissues import base, const
 
-_TIME_UNITS = {
-    'year': "%Y",
-    'month': "%Y-%m",
-    'day': "%Y-%m-%d",
-    'hour': "%Y-%m-%d %H:00:00",
-    'minute': "%Y-%m-%d %H:%M:00",
-}
-_TIME_FIELDS = ['created', 'last_changed']
-
 def make_table(
     o: List[base.Issue], *, time_unit: str = 'month'
 ) -> Dict[str, List]:
-    if time_unit not in _TIME_UNITS:
-        raise ValueError("Time unit should be " + ", ".join(_TIME_UNITS))
+    if time_unit not in const._TIME_UNITS:
+        raise ValueError("Time unit should be " + ", ".join(const._TIME_UNITS))
 
     ret: Dict[str, List] = {}
 
@@ -41,12 +32,12 @@ def make_table(
                 new_field.append(None)
         ret[field] = new_field
 
-    for field in _TIME_FIELDS:
+    for field in const._TIME_FIELDS:
         new_field = []
         for _ in ret[field]:
             try:
                 new_field.append(time.strftime(
-                    _TIME_UNITS[time_unit],
+                    const._TIME_UNITS[time_unit],
                     time.strptime(_, "%Y-%m-%d %H:%M")
                 ))
             except TypeError:

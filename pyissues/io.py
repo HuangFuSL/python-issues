@@ -1,44 +1,48 @@
 from __future__ import annotations
 
 import gzip
-from io import IOBase
+import io
+import time
 from typing import Iterable, Iterable, Mapping
 from xml.dom import minidom
 from collections import abc
 
-from . import base
+from . import base, const
+
 
 def MappingIterWrapper(o: Mapping):
     for _ in o:
         yield o[_]
 
+
 def domdump(o: Iterable[base.Issue]) -> minidom.Document:
     ret_dom = minidom.getDOMImplementation().createDocument(None, 'issues', None)
     issues = ret_dom.documentElement
     issues.setAttribute("items", str(len(o)))
+    issues.setAttribute("last_fetched", str(time.time()))
     issues_iter = MappingIterWrapper(o) if isinstance(o, Mapping) else o
     for issue in issues_iter:
         issues.appendChild(issue.dumpxml().documentElement)
     return ret_dom
 
 
-def xmldump(o: Iterable[base.Issue], fp: IOBase | str) -> None:
+def xmldump(o: Iterable[base.Issue], fp: io.IOBase | str) -> None:
     ret = domdump(o)
     data = ret.toxml()
-    if isinstance(fp, IOBase):
+    if isinstance(fp, io.IOBase):
         fp.write(data)
     elif isinstance(fp, str):
         with open(fp, "w", encoding="utf-8") as file:
             file.write(data)
 
 
-def xmldumpCompressed(o: Iterable[base.Issue], fp: IOBase | str, **kwargs) -> None:
+def xmldumpCompressed(o: Iterable[base.Issue], fp: io.IOBase | str, **kwargs) -> None:
     ret = domdump(o)
     data = gzip.compress(
         ret.toxml().encode(encoding="utf-8", errors="xmlcharrefreplace"),
         **kwargs
     )
-    if isinstance(fp, IOBase):
+    if isinstance(fp, io.IOBase):
         fp.write(data)
         fp.flush()
     elif isinstance(fp, str):
@@ -52,6 +56,12 @@ def xmldumps(o: Iterable) -> str:
 
 def domload(dom, container: type = list) -> Iterable[base.Issue]:
     root = dom.documentElement
+    if 'last_fetched' in root.attributes:
+        print("This content was saved at %s (local)." % (
+            time.strftime(const._TIME_UNITS['second'], time.localtime(
+                float(dict(root.attributes)['last_fetched'].nodeValue)
+            )),
+        ))
     if not isinstance(container(), abc.Mapping):
         ret = []
         for Node in root.childNodes:
@@ -69,19 +79,25 @@ def domload(dom, container: type = list) -> Iterable[base.Issue]:
 
 def xmlloads(s: str, container: type = list) -> Iterable[base.Issue]:
     dom = minidom.parseString(s)
-    return domload(dom, container)
+    ret = domload(dom, container)
+    del dom
+    return ret
 
 
-def xmlload(fp: str | IOBase, container: type = list) -> Iterable[base.Issue]:
+def xmlload(fp: str | io.IOBase, container: type = list) -> Iterable[base.Issue]:
     dom = minidom.parse(fp)
-    return domload(dom, container)
+    ret = domload(dom, container)
+    del dom
+    return ret
 
 
-def xmlloadCompressed(fp: str | IOBase, container: type = list) -> Iterable[base.Issue]:
-    if isinstance(fp, IOBase):
-        data = gzip.decompress(fp.read()).decode(encoding="utf-8", errors="ignore")
-        return xmlloads(data,container)
+def xmlloadCompressed(fp: str | io.IOBase, container: type = list) -> Iterable[base.Issue]:
+    if isinstance(fp, io.IOBase):
+        data = gzip.decompress(fp.read()).decode(
+            encoding="utf-8", errors="ignore")
+        return xmlloads(data, container)
     elif isinstance(fp, str):
         with open(fp, "rb") as file:
-            data = gzip.decompress(file.read()).decode(encoding="utf-8", errors="ignore")
+            data = gzip.decompress(file.read()).decode(
+                encoding="utf-8", errors="ignore")
             return xmlloads(data, container)
