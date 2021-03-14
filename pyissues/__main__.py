@@ -16,6 +16,7 @@ from . import const as const
 from . import io as issuesIO
 from . import network as network
 from . import version as _version
+from . import cli as cli
 
 
 sub_commands: Dict[str, Callable] = {}
@@ -130,7 +131,7 @@ def rebuild(
 
 @sub_command
 def refetch(
-    *, metafile: str = "meta.json", threads: int | None = None, **kwargs):
+        *, metafile: str = "meta.json", threads: int | None = None, **kwargs):
     with open(metafile, "r") as file:
         update = refresh_meta(json.load(file), {})
     print("%d issues loaded." % (len(update), ))
@@ -195,9 +196,19 @@ def load(*, datafile: str = "issues.xml.gz", **kwargs):
     print("Loaded issues are saved in `ret`")
     return issues
 
+
 @sub_command
 def version(**kwargs):
     print(_version.__version__)
+
+
+@sub_command
+def show(*, datafile: str = "issues.xml.gz", _id: int, width: int, **kwargs):
+    print("Loading issues.")
+    issues = issuesIO.xmlloadCompressed(datafile, dict)
+    if _id is not None: _id = int(_id)
+    if width is not None: width = int(width)
+    cli.display(issues[_id], width=width)
 
 def main(*args) -> Any:
     try:
@@ -222,6 +233,12 @@ def main(*args) -> Any:
     parser.add_argument(
         '--data', '-d',
         nargs='?', dest='datafile', default='issues.xml.gz')
+    parser.add_argument(
+        '--issue', '-i',
+        nargs='?', dest='_id', default=None)
+    parser.add_argument(
+        '--width', '-w',
+        nargs='?', dest='width', default="80")
 
     if not args:
         return
