@@ -9,7 +9,8 @@ from __future__ import annotations
 import base64
 import warnings
 from typing import List
-from xml.dom import minidom
+
+import lxml.etree
 
 from . import const
 
@@ -19,11 +20,13 @@ class UnreadableXMLWarning(Exception):
     encoded. Illegal characters such as b"\x01" will make the XML file generated
     unreadable.
     """
+
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
 
     def __str__(self) -> str:
         return super().__str__()
+
 
 class Comment():
     def __init__(self, url: str, author: str, content: str, date: str, username: str):
@@ -81,57 +84,54 @@ class Issue():
     def _decode(o: str) -> str:
         return base64.standard_b64decode(o).decode(encoding="utf-8")
 
-    def dumpxml(self, encode: bool = True) -> minidom.Document:
+    def dump(self, encode: bool = True) -> lxml.etree.Element:
         if encode:
             encoder = self._encode
         else:
             encoder = str
             warnings.warn(UnreadableXMLWarning(
                 "You are saving the non-base64-encoded data , the XML " +
-                "document generated might be unreadable due to illegal " + 
+                "document generated might be unreadable due to illegal " +
                 "characters in the document."
             ))
-            
-        ret_dom = minidom.getDOMImplementation().createDocument(None, 'issue', None)
-        issue = ret_dom.documentElement
+
+        ret_node = lxml.etree.Element("issue")
+
         for attr in const._ISSUE_ATTRIBUTES:
-            issue.setAttribute(attr, encoder(str(getattr(self, attr, ''))))
+            ret_node.set(attr, encoder(str(getattr(self, attr, ''))))
 
         for attr in const._ISSUE_MULTIPLE_ATTRIBUTES:
             for record in getattr(self, attr, None):
-                new_node = ret_dom.createElement(attr)
-                new_node.appendChild(
-                    ret_dom.createTextNode(record)
-                )
-                issue.appendChild(new_node)
+                new_node = lxml.etree.Element(attr)
+                new_node.text = record
+                ret_node.append(new_node)
 
         for attr in const._ISSUE_NODES:
-            new_node = ret_dom.createElement(attr)
+            new_node = lxml.etree.Element(attr)
             for record in getattr(self, attr, None):
-                new_sub_node = ret_dom.createElement(attr[:-1])
+                new_sub_node = lxml.etree.Element(attr[:-1])
                 for field in record:
-                    new_sub_node.setAttribute(field, encoder(record[field]))
-                new_node.appendChild(new_sub_node)
-            issue.appendChild(new_node)
+                    new_sub_node.set(field, encoder(record[field]))
+                new_node.append(new_sub_node)
+            ret_node.append(new_node)
 
         for attr in const._ISSUE_COMPLEX:
-            new_node = ret_dom.createElement(attr)
+            new_node = lxml.etree.Element(attr)
             for record in getattr(self, attr, None):
-                new_sub_node = ret_dom.createElement(attr[:-1])
+                new_sub_node = lxml.etree.Element(attr[:-1])
                 for field in record.get_fields():
-                    new_sub_node.setAttribute(field, getattr(record, field))
-                new_sub_node.appendChild(
-                    ret_dom.createTextNode(encoder(str(record)))
-                )
-                new_node.appendChild(new_sub_node)
-            issue.appendChild(new_node)
+                    new_sub_node.set(field, getattr(record, field))
+                new_sub_node.text = encoder(str(record))
+                new_node.append(new_sub_node)
+            ret_node.append(new_node)
 
-        return ret_dom
+        return ret_node
 
-    def loadFromNode(self, root: minidom.Node, decode: bool = True):
+    def _load(self, root: lxml.etree._element, decode: bool = True):
         decoder = self._decode if decode else str
-        for attr in dict(root.attributes):
-            setattr(self, attr, decoder(root.attributes[attr].nodeValue))
+        attributes = root.attrib
+        for attr in attributes:
+            setattr(self, attr, decoder(attributes[attr]))
         data = {}
         for attr in const._ISSUE_MULTIPLE_ATTRIBUTES:
             data[attr] = []
@@ -139,30 +139,30 @@ class Issue():
             data[attr] = []
         for attr in const._ISSUE_COMPLEX:
             data[attr] = []
-        for Node in root.childNodes:
-            if Node.nodeName in const._ISSUE_MULTIPLE_ATTRIBUTES and Node.firstChild:
-                data[Node.nodeName].append(Node.firstChild.nodeValue)
-            elif Node.nodeName in const._ISSUE_NODES:
-                for i in Node.childNodes:
-                    if i.nodeName != '#text':
-                        data[Node.nodeName].append({
-                            _: decoder(i.attributes[_].firstChild.nodeValue) for _ in dict(i.attributes)
-                        })
-            elif Node.nodeName in const._ISSUE_COMPLEX:
-                for i in Node.childNodes:
-                    if i.nodeName != '#text':
-                        ret = {
-                            _: i.attributes[_].firstChild.nodeValue for _ in dict(i.attributes)
-                        }
-                        try:
-                            ret['content'] = decoder(i.firstChild.nodeValue)
-                        except AttributeError:
-                            ret['content'] = ""
-                        data[Node.nodeName].append(Comment(**ret))
+
+        for child in root:
+            if child.tag in const._ISSUE_MULTIPLE_ATTRIBUTES:
+                data[child.tag].append(child.text)
+            elif child.tag in const._ISSUE_NODES:
+                for subchild in child:
+                    data[child.tag].append({
+                        _: decoder(subchild.attrib[_]) for _ in subchild.attrib
+                    })
+            elif child.tag in const._ISSUE_COMPLEX:
+                for subchild in child:
+                    ret = {
+                        _: subchild.attrib[_] for _ in dict(subchild.attrib)
+                    }
+                    try:
+                        ret['content'] = decoder(subchild.text)
+                    except:
+                        ret['content'] = ""
+                    data[child.tag].append(Comment(**ret))
         for _ in data:
             setattr(self, _, data[_])
         return self
 
-    def loadFromDOM(self, o: minidom.Document, decode: bool = True):
-        root = o.childNodes[0]
-        return self.loadFromNode(root, decode)
+    @staticmethod
+    def load(root: lxml.etree._element, decode: bool = True) -> Issue:
+        ret = Issue()
+        return ret._load(root, decode)

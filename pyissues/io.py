@@ -3,8 +3,8 @@ from __future__ import annotations
 import gzip
 import io
 import time
+import lxml.etree
 from typing import Iterable, Iterable, Mapping
-from xml.dom import minidom
 from collections import abc
 
 from . import base, const
@@ -15,20 +15,20 @@ def MappingIterWrapper(o: Mapping):
         yield o[_]
 
 
-def domdump(o: Iterable[base.Issue]) -> minidom.Document:
-    ret_dom = minidom.getDOMImplementation().createDocument(None, 'issues', None)
-    issues = ret_dom.documentElement
-    issues.setAttribute("items", str(len(o)))
-    issues.setAttribute("last_fetched", str(time.time()))
+def domdump(o: Iterable[base.Issue]):
+    ret_dom = lxml.etree.Element(
+        "issues",
+        items=str(len(o)), last_fetched=str(time.time())
+    )
     issues_iter = MappingIterWrapper(o) if isinstance(o, Mapping) else o
     for issue in issues_iter:
-        issues.appendChild(issue.dumpxml().documentElement)
+        ret_dom.append(issue.dump())
     return ret_dom
 
 
 def xmldump(o: Iterable[base.Issue], fp: io.IOBase | str) -> None:
     ret = domdump(o)
-    data = ret.toxml()
+    data = lxml.etree.tostring(ret)
     if isinstance(fp, io.IOBase):
         fp.write(data)
     elif isinstance(fp, str):
@@ -39,7 +39,7 @@ def xmldump(o: Iterable[base.Issue], fp: io.IOBase | str) -> None:
 def xmldumpCompressed(o: Iterable[base.Issue], fp: io.IOBase | str, **kwargs) -> None:
     ret = domdump(o)
     data = gzip.compress(
-        ret.toxml().encode(encoding="utf-8", errors="xmlcharrefreplace"),
+        lxml.etree.tostring(ret),
         **kwargs
     )
     if isinstance(fp, io.IOBase):
@@ -55,37 +55,34 @@ def xmldumps(o: Iterable) -> str:
 
 
 def domload(dom, container: type = list) -> Iterable[base.Issue]:
-    root = dom.documentElement
-    if 'last_fetched' in root.attributes:
+    if dom.get('last_fetched') is not None:
         print("This content was saved at %s (local)." % (
             time.strftime(const._TIME_UNITS['second'], time.localtime(
-                float(dict(root.attributes)['last_fetched'].nodeValue)
+                float(dom.get('last_fetched'))
             )),
         ))
     if not isinstance(container(), abc.Mapping):
         ret = []
-        for Node in root.childNodes:
-            if Node.nodeName == "issue":
-                ret.append(base.Issue().loadFromNode(Node))
+        for child in dom:
+            ret.append(base.Issue.load(child))
         return container(ret)
     else:
         ret = {}
-        for Node in root.childNodes:
-            if Node.nodeName == "issue":
-                new_issue = base.Issue().loadFromNode(Node)
-                ret[int(new_issue._id)] = new_issue
+        for child in dom:
+            new_issue = base.Issue.load(child)
+            ret[int(new_issue._id)] = new_issue
         return container(ret)
 
 
 def xmlloads(s: str, container: type = list) -> Iterable[base.Issue]:
-    dom = minidom.parseString(s)
+    dom = lxml.etree.fromstring(s)
     ret = domload(dom, container)
     del dom
     return ret
 
 
 def xmlload(fp: str | io.IOBase, container: type = list) -> Iterable[base.Issue]:
-    dom = minidom.parse(fp)
+    dom = lxml.etree.parse(fp)
     ret = domload(dom, container)
     del dom
     return ret

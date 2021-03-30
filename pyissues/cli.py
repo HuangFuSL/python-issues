@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import time
 from typing import Dict, Iterable, List
 
 from . import base
