@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import operator
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 from . import const
 
 stripper = operator.methodcaller("strip")
+
+
+def MappingIterWrapper(o: Mapping):
+    for _ in o:
+        yield o[_]
 
 
 def replace_space(o: str) -> str:

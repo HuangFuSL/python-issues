@@ -7,12 +7,7 @@ import lxml.etree
 from typing import Iterable, Iterable, Mapping
 from collections import abc
 
-from . import base, const
-
-
-def MappingIterWrapper(o: Mapping):
-    for _ in o:
-        yield o[_]
+from . import base, const, util
 
 
 def domdump(o: Iterable[base.Issue]):
@@ -20,7 +15,7 @@ def domdump(o: Iterable[base.Issue]):
         "issues",
         items=str(len(o)), last_fetched=str(time.time())
     )
-    issues_iter = MappingIterWrapper(o) if isinstance(o, Mapping) else o
+    issues_iter = util.MappingIterWrapper(o) if isinstance(o, Mapping) else o
     for issue in issues_iter:
         ret_dom.append(issue.dump())
     return ret_dom
