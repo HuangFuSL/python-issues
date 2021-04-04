@@ -23,4 +23,4 @@ class Version():
             return super().__eq__(o)
 
 
-__version__ = Version(0, 0, 2)
+__version__ = Version(0, 0, 3)

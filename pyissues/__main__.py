@@ -1,3 +1,32 @@
+"""CLI Interface
+
+CLI Interface for python-issues. Base usage:
+
+python -m pyissues [SUB-COMMAND] [ARGS]
+
+Available sub-commands:
+
+* check     Check whether the issue list is updatable
+* fix       Fix the missing issue in the list
+* load      Load all of the issues into the memory
+* rebuild   Refetch the metadata and all of the issues
+* refetch   Refetch all of the issues using the metadata
+* show      Display the specified issue
+* update    Update the metadata and issue list
+* version   Display the version
+
+Available arguments:
+
+--fullupdate, -fu   Refetch and update all of the open issues
+    --threads, -t   Number of threads to be used
+       --meta, -m   Specify the location of metadata file
+       --data, -d   Specify the location of data file
+      --issue, -i   Specify the issue to be displayed
+      --width, -w   Specify the command-line window size
+
+If Python is initiated with argument `-i`, the returned value will be stored in
+`ret` local variable.
+"""
 from __future__ import annotations
 
 import argparse
@@ -12,17 +41,24 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Set
 
 from . import base as base
+from . import cli as cli
 from . import const as const
 from . import io as issuesIO
 from . import network as network
 from . import version as _version
-from . import cli as cli
-
 
 sub_commands: Dict[str, Callable] = {}
 
 
 def sub_command(o: Callable) -> Callable:
+    """Decorator for the subcommand
+
+    Parameter:
+
+    - `o`: `Callable`, the subcommand
+
+    Returns: `Callabel`, the original subcommand
+    """
     sub_commands[o.__name__] = o
     return o
 
@@ -31,16 +67,24 @@ def is_compressed(_: str) -> str:
     return _[-2:] == "gz"
 
 
-def _numbering(start: int = 1) -> str:
-    i = start
-    while True:
-        yield str(i) + "."
-        i += 1
-
-
 def compare_meta(
     old: List[Set[int]], new: List[Set[int]], fullupdate: bool = True
 ) -> Set[int]:
+    """Compare two metadata
+
+    Parameters: 
+
+    - `old`: `List[Set[int]]`, the old metadata
+    - `new`: `List[Set[int]]`, the new metadata
+    - `fullupdate`: `bool`, if `True`, all of the open issues will be included
+    """
+
+    def _numbering(start: int = 1) -> str:
+        i = start
+        while True:
+            yield str(i) + "."
+            i += 1
+
     number = _numbering(1)
     sub = new[0] - old[0]
     print(next(number), "%d issues newly added." % (len(sub)))
@@ -53,7 +97,21 @@ def compare_meta(
     return new[0] - old[0] | new[0 if fullupdate else 2] - old[2]
 
 
-def reshape_meta(o: Dict[int | str, int]) -> List[Set[int | str]]:
+def reshape_meta(o: Dict[int | str, int]) -> List[Set[int]]:
+    """Convert the CSV data to sets
+
+    Parameters:
+
+    - `o`: `Dict[int | str, int]`, data to be converted
+
+    Returns: `List[Set[int]]`
+
+    - The first set contains ID of all issues;
+    - The second set contains ID of closed issues;
+    - The third set contains ID of open issues;
+    - The fourth set contains ID of pending issues;
+    - The fifth set contains ID of languishing issues.
+    """
     ret: List[Set[int]] = [set() for _ in range(5)]
     for i in o:
         ret[o[i]].add(int(i))
@@ -62,7 +120,17 @@ def reshape_meta(o: Dict[int | str, int]) -> List[Set[int | str]]:
 
 
 def update_meta(
-        meta: Dict[int, int], path: str | io.IOBase = "meta.json") -> None:
+    meta: Dict[int, int], path: str | io.IOBase = "meta.json"
+) -> None:
+    """Save the data to local JSON file
+
+    Parameters:
+
+    - `meta`: Dict[int, int], CSV data
+    - `path`: `str` or `io.IOBase`, the filename
+
+    Returns: `None`
+    """
     if isinstance(path, str) and path:
         with open(path, "w", encoding="utf-8") as file:
             json.dump(meta, file)
@@ -91,7 +159,8 @@ def refresh_meta(
 
 def fetch(records: Iterable[int], threads: int | None = 16) -> List[base.Issue]:
     print("Fetching %d issues from bugs.python.org" % (len(records), ))
-    if threads is not None: threads = int(threads)
+    if threads is not None:
+        threads = int(threads)
     with multiprocessing.Pool(threads) as pool:
         start = time.time()
         ret = pool.map(network.get_data, map(int, records))
@@ -116,7 +185,7 @@ def write(
 
 @sub_command
 def rebuild(
-    *, metafile: str = "meta.json", threads: int | None = None, **kwargs):
+        *, metafile: str = "meta.json", threads: int | None = None, **kwargs):
     print("Fetching list.")
     new_list = network.get_list()
     update = set()
@@ -150,12 +219,12 @@ def check(*, metafile: str = "meta.json", **kwargs):
 
 
 @sub_command
-def fix(*, 
-    metafile: str = "meta.json",
-    datafile: str = "issues.xml.gz",
-    threads: int | None = None,
-    **kwargs
-):
+def fix(*,
+        metafile: str = "meta.json",
+        datafile: str = "issues.xml.gz",
+        threads: int | None = None,
+        **kwargs
+        ):
     print("Loading list,")
     with open(metafile, "r") as file:
         update = refresh_meta(json.load(file), {})
@@ -169,10 +238,10 @@ def fix(*,
 
 @sub_command
 def update(*,
-    fullupdate: bool = False,
-    metafile: str = "meta.json",
-    datafile: str = "issues.xml.gz",
-    threads: int | None = None, **kwargs):
+           fullupdate: bool = False,
+           metafile: str = "meta.json",
+           datafile: str = "issues.xml.gz",
+           threads: int | None = None, **kwargs):
     print("Loading list.")
     new_list = network.get_list()
     update = refresh_meta(new_list, metafile, fullupdate=fullupdate)
@@ -206,9 +275,12 @@ def version(**kwargs):
 def show(*, datafile: str = "issues.xml.gz", _id: int, width: int, **kwargs):
     print("Loading issues.")
     issues = issuesIO.xmlloadCompressed(datafile, dict)
-    if _id is not None: _id = int(_id)
-    if width is not None: width = int(width)
+    if _id is not None:
+        _id = int(_id)
+    if width is not None:
+        width = int(width)
     cli.display(issues[_id], width=width)
+
 
 def main(*args) -> Any:
     try:
